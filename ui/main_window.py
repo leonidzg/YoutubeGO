@@ -159,6 +159,15 @@ class MainWindow(QMainWindow):
         dialog = ScheduleAddDialog(self)
         dialog.exec_()
     def start_queue(self):
+        download_path = self.user_profile.get_download_path()
+        if not os.path.exists(download_path):
+            QMessageBox.warning(self, "Invalid Download Path",
+                f"Download folder does not exist:\n{download_path}\n\n"
+                "The folder may have been deleted or the drive may be disconnected.\n"
+                "Please select a new download location in Settings.")
+            self.append_log(f"Queue start aborted - invalid path: {download_path}")
+            return
+        
         count_started = 0
         for r in range(self.queue_table.rowCount()):
             st_item = self.queue_table.item(r, 4)
@@ -170,7 +179,7 @@ class MainWindow(QMainWindow):
                     playlist = ("playlist" in typ)
                     current_format = "mp4"
                     row_idx = r
-                    tsk = DownloadTask(url, self.user_profile.get_default_resolution(), self.user_profile.get_download_path(), self.user_profile.get_proxy(), audio_only=audio, playlist=playlist, output_format=current_format, audio_format=self.user_profile.get_audio_format() if audio else None, audio_quality=self.user_profile.get_audio_quality() if audio else "320", from_queue=True)
+                    tsk = DownloadTask(url, self.user_profile.get_default_resolution(), download_path, self.user_profile.get_proxy(), audio_only=audio, playlist=playlist, output_format=current_format, audio_format=self.user_profile.get_audio_format() if audio else None, audio_quality=self.user_profile.get_audio_quality() if audio else "320", from_queue=True)
                     self.run_task(tsk, row_idx)
                     self.queue_table.setItem(r, 4, QTableWidgetItem("Started"))
                     count_started += 1
@@ -182,6 +191,11 @@ class MainWindow(QMainWindow):
         for r in sorted(sel, reverse=True):
             self.scheduler_table.removeRow(r)
     def check_scheduled_downloads(self):
+        download_path = self.user_profile.get_download_path()
+        if not os.path.exists(download_path):
+            self.append_log(f"Scheduled download skipped - invalid path: {download_path}")
+            return
+        
         now = QDateTime.currentDateTime()
         for r in range(self.scheduler_table.rowCount()):
             dt_str = self.scheduler_table.item(r, 0).text()
@@ -192,7 +206,7 @@ class MainWindow(QMainWindow):
                 t = self.scheduler_table.item(r, 2).text().lower()
                 s = (self.scheduler_table.item(r, 3).text() == "Yes")
                 audio = ("audio" in t)
-                task = DownloadTask(u, self.user_profile.get_default_resolution(), self.user_profile.get_download_path(), self.user_profile.get_proxy(), audio_only=audio, playlist=False, subtitles=s, audio_format=self.user_profile.get_audio_format() if audio else None, audio_quality=self.user_profile.get_audio_quality() if audio else "320", from_queue=True)
+                task = DownloadTask(u, self.user_profile.get_default_resolution(), download_path, self.user_profile.get_proxy(), audio_only=audio, playlist=False, subtitles=s, audio_format=self.user_profile.get_audio_format() if audio else None, audio_quality=self.user_profile.get_audio_quality() if audio else "320", from_queue=True)
                 self.run_task(task, r)
                 self.scheduler_table.setItem(r, 4, QTableWidgetItem("Started"))
     def start_download_simple(self, url_edit, audio=False, playlist=False):
@@ -200,8 +214,17 @@ class MainWindow(QMainWindow):
         if not link:
             QMessageBox.warning(self, "Error", "No URL given.")
             return
-        task = DownloadTask(link, self.user_profile.get_default_resolution(), self.user_profile.get_download_path(), self.user_profile.get_proxy(), audio_only=audio, playlist=playlist, audio_format=self.user_profile.get_audio_format() if audio else None, audio_quality=self.user_profile.get_audio_quality() if audio else "320", from_queue=False)
-        # History will be written directly by the downloader
+        
+        download_path = self.user_profile.get_download_path()
+        if not os.path.exists(download_path):
+            QMessageBox.warning(self, "Invalid Download Path",
+                f"Download folder does not exist:\n{download_path}\n\n"
+                "The folder may have been deleted or the drive may be disconnected.\n"
+                "Please select a new download location in Settings.")
+            self.append_log(f"Download aborted - invalid path: {download_path}")
+            return
+        
+        task = DownloadTask(link, self.user_profile.get_default_resolution(), download_path, self.user_profile.get_proxy(), audio_only=audio, playlist=playlist, audio_format=self.user_profile.get_audio_format() if audio else None, audio_quality=self.user_profile.get_audio_quality() if audio else "320", from_queue=False)
         self.run_task(task, None)
     def run_task(self, task, row):
         if task.playlist:
@@ -283,12 +306,20 @@ class MainWindow(QMainWindow):
                 # History will be written directly by the downloader
     def open_download_folder(self):
         folder = self.user_profile.get_download_path()
+        if not os.path.exists(folder):
+            QMessageBox.warning(self, "Folder Not Found", 
+                f"Download folder does not exist:\n{folder}\n\n"
+                "The folder may have been deleted or the drive may be disconnected.\n"
+                "Please select a new download location in Settings.")
+            self.append_log(f"Cannot open folder - path does not exist: {folder}")
+            return
+        
         try:
             if sys.platform.startswith('win'):
                 os.startfile(folder)
-            elif sys.platform.startswith('darwin'):  # macOS
+            elif sys.platform.startswith('darwin'):
                 subprocess.run(['open', folder])
-            else:  # Linux
+            else:
                 subprocess.run(['xdg-open', folder])
         except (OSError, subprocess.SubprocessError, FileNotFoundError) as e:
             QMessageBox.warning(self, "Error", f"Could not open folder: {str(e)}")

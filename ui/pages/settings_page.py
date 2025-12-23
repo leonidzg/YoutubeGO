@@ -5,12 +5,17 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from ui.components.animated_button import AnimatedButton
 from core.version import get_version
+import os
 
 class SettingsPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
         self.init_ui()
+    
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.check_download_path_validity()
 
     def init_ui(self):
         
@@ -248,14 +253,26 @@ class SettingsPage(QWidget):
         p_hl.setContentsMargins(10, 10, 10, 10)
         self.download_path_edit = QLineEdit()
         self.download_path_edit.setReadOnly(True)
-        self.download_path_edit.setText(self.parent.user_profile.get_download_path())
-        self.download_path_edit.setToolTip(
-            "Download destination folder:\n"
-            "• All downloads will be saved here\n"
-            "• Playlists create subfolders automatically\n"
-            "• Make sure you have enough disk space\n\n"
-            "Click Browse to change location"
-        )
+        current_path = self.parent.user_profile.get_download_path()
+        self.download_path_edit.setText(current_path)
+        
+        if not os.path.exists(current_path):
+            self.download_path_edit.setStyleSheet("QLineEdit { color: #ff4444; font-weight: bold; }")
+            self.download_path_edit.setToolTip(
+                "⚠️ WARNING: Path does not exist!\n\n"
+                f"Current path: {current_path}\n\n"
+                "This folder may have been deleted or the drive may be disconnected.\n"
+                "Please select a new download location by clicking Browse."
+            )
+        else:
+            self.download_path_edit.setStyleSheet("")
+            self.download_path_edit.setToolTip(
+                "Download destination folder:\n"
+                "• All downloads will be saved here\n"
+                "• Playlists create subfolders automatically\n"
+                "• Make sure you have enough disk space\n\n"
+                "Click Browse to change location"
+            )
         
         b_br = AnimatedButton("Browse")
         b_br.clicked.connect(self.select_download_path)
@@ -428,8 +445,23 @@ class SettingsPage(QWidget):
         self.parent.append_log(f"Geo-bypass country set to: {country_name}")
 
     def select_download_path(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Download Folder")
+        current_path = self.parent.user_profile.get_download_path()
+        start_dir = current_path if os.path.exists(current_path) else os.path.expanduser("~")
+        
+        folder = QFileDialog.getExistingDirectory(self, "Select Download Folder", start_dir)
         if folder:
+            if not os.path.exists(folder):
+                QMessageBox.warning(self, "Invalid Path", 
+                    f"Selected path does not exist:\n{folder}\n\n"
+                    "Please select a valid directory.")
+                return
+            
+            if not os.access(folder, os.W_OK):
+                QMessageBox.warning(self, "Permission Denied",
+                    f"Cannot write to selected path:\n{folder}\n\n"
+                    "Please select a directory with write permissions.")
+                return
+            
             self.parent.user_profile.set_profile(
                 self.parent.user_profile.data["name"],
                 self.parent.user_profile.data["profile_picture"],
@@ -444,4 +476,34 @@ class SettingsPage(QWidget):
         if self.parent.log_manager.log_dock_visible:
             self.show_logs_btn.setText("Hide Logs")
         else:
-            self.show_logs_btn.setText("Show Logs") 
+            self.show_logs_btn.setText("Show Logs")
+    
+    def check_download_path_validity(self):
+        current_path = self.parent.user_profile.get_download_path()
+        self.download_path_edit.setText(current_path)
+        
+        if not os.path.exists(current_path):
+            self.download_path_edit.setStyleSheet("QLineEdit { color: #ff4444; font-weight: bold; }")
+            self.download_path_edit.setToolTip(
+                "⚠️ WARNING: Path does not exist!\n\n"
+                f"Current path: {current_path}\n\n"
+                "This folder may have been deleted or the drive may be disconnected.\n"
+                "Please select a new download location by clicking Browse."
+            )
+            QMessageBox.warning(self, "Invalid Download Path",
+                f"⚠️ Download folder does not exist:\n{current_path}\n\n"
+                "Possible causes:\n"
+                "• External drive (USB/SD card) was removed\n"
+                "• Network drive disconnected\n"
+                "• Folder was deleted or moved\n\n"
+                "Downloads will fail until you select a valid location.\n"
+                "Click Browse to choose a new download folder.")
+        else:
+            self.download_path_edit.setStyleSheet("")
+            self.download_path_edit.setToolTip(
+                "Download destination folder:\n"
+                "• All downloads will be saved here\n"
+                "• Playlists create subfolders automatically\n"
+                "• Make sure you have enough disk space\n\n"
+                "Click Browse to change location"
+            ) 

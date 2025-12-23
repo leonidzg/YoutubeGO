@@ -130,9 +130,22 @@ class DownloadQueueWorker(QRunnable):
             
             self.log_signal.emit(f"Starting download to: {self.task.folder}")
             
-            if not os.path.exists(self.task.folder):
-                os.makedirs(self.task.folder, exist_ok=True)
-                self.log_signal.emit(f"Created download directory: {self.task.folder}")
+            try:
+                if not os.path.exists(self.task.folder):
+                    os.makedirs(self.task.folder, exist_ok=True)
+                    self.log_signal.emit(f"Created download directory: {self.task.folder}")
+            except (OSError, PermissionError) as e:
+                self.status_signal.emit(self.row, "Download Error")
+                error_msg = f"Cannot access download directory: {self.task.folder}\n"
+                error_msg += f"Error: {str(e)}\n"
+                error_msg += "Possible causes:\n"
+                error_msg += "- Drive not connected (USB/external drive)\n"
+                error_msg += "- Network drive disconnected\n"
+                error_msg += "- Insufficient permissions\n"
+                error_msg += "- Path no longer exists\n\n"
+                error_msg += "Please select a valid download location in Settings."
+                self.log_signal.emit(error_msg)
+                return
                 
             if self.task.playlist:
                 self.status_signal.emit(self.row, "Loading Playlist...")

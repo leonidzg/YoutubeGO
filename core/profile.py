@@ -102,7 +102,15 @@ class UserProfile:
         self.save_profile()
 
     def get_download_path(self):
-        return self.data.get("download_path", os.getcwd())
+        path = self.data.get("download_path", os.getcwd())
+        if not os.path.exists(path):
+            fallback = os.path.join(os.path.expanduser("~"), "Downloads")
+            if not os.path.exists(fallback):
+                fallback = os.getcwd()
+            self.data["download_path"] = fallback
+            self.save_profile()
+            return fallback
+        return path
 
     def get_proxy(self):
         return self.data.get("proxy", "")
